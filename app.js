@@ -363,7 +363,9 @@ function takeFar(gray, P) {
   const kpts = []; for (let i = 0; i < kp.size(); i++) { const k = kp.get(i); kpts.push([k.pt.x, k.pt.y]); }
   kp.delete();
   clearRef();
-  S.ref = { gray: gray.clone(), P, p0, Xtrue, kpts, des, dTrue: norm3(toCam(P, Xtrue)) };
+  // Dokunulan nokta kâğıdın önündeki bir nesnede olabilir: gerçek mesafe şerit metreden gelir
+  const obj3d = !!S.tapPoint;
+  S.ref = { gray: gray.clone(), P, p0, Xtrue, kpts, des, obj3d, dTrue: obj3d ? null : norm3(toCam(P, Xtrue)) };
   S.mode = "live"; S.lastGuess = p0;
 }
 function clearRef() {
@@ -439,7 +441,7 @@ function matchPoint(gray, P) {
 function measure(gray, P) {
   const R = S.ref;
   const m = matchPoint(gray, P);
-  const dTrue = norm3(toCam(P, R.Xtrue));
+  const dTrue = R.obj3d ? null : norm3(toCam(P, R.Xtrue));
   const res = { matches: m.n, inliers: m.inliers || 0, dTrue };
   // Hareket: uzak fotoğraftan bu yana ileri ve yana
   const C0 = camCenter(R.P), C1 = camCenter(P), ray = unit3(sub3(R.Xtrue, C0)), mv = sub3(C1, C0);
@@ -452,11 +454,10 @@ function measure(gray, P) {
                            { xn: undistort(m.p[0], m.p[1], S.cal), R: P.R, t: P.t }], sigmaN);
   if (!tri) return res;
   res.parallax = parallaxDeg(tri.X, R.P, P);
-  const q = project(toCam(P, R.Xtrue), S.cal);
-  res.pxErr = Math.hypot(q[0] - m.p[0], q[1] - m.p[1]);
+  if (!R.obj3d) { const q = project(toCam(P, R.Xtrue), S.cal); res.pxErr = Math.hypot(q[0] - m.p[0], q[1] - m.p[1]); }
   if (res.parallax >= MIN_PARALLAX) {
     const { d, sigma } = distanceFrom(tri.X, tri.cov, P);
-    res.dEst = d; res.sigma = sigma; res.err = d - dTrue;
+    res.dEst = d; res.sigma = sigma; res.err = dTrue == null ? null : d - dTrue;
   }
   return res;
 }
@@ -558,7 +559,7 @@ function updateUI(det, P, res) {
   const est = $("vEst"), tru = $("vTrue"), err = $("vErr");
   if (S.mode === "live" && res) {
     est.innerHTML = res.dEst != null ? `${fmtCm(res.dEst)}<small> cm</small>` : "–";
-    tru.innerHTML = `${fmtCm(res.dTrue)}<small> cm</small>`;
+    tru.innerHTML = res.dTrue == null ? `<small>şerit metre</small>` : `${fmtCm(res.dTrue)}<small> cm</small>`;
     err.innerHTML = res.err != null ? `${fmtCm(res.err, true)}<small> cm</small>` : "–";
     err.className = "val " + (res.err == null ? "" : Math.abs(res.err) <= 10 ? "good" : Math.abs(res.err) <= 20 ? "warn" : "bad");
     $("vDetail").textContent = `uzak ${fmtCm(S.ref.dTrue)} cm · ileri ${fmtCm(res.fwd)} · yana ${fmtCm(res.lat)} cm · paralaks ${res.parallax != null ? res.parallax.toFixed(1) : "–"}°` +
@@ -586,6 +587,12 @@ function wireButtons() {
     $("hint").textContent = "Kaydedildi. Yeni ölçüm için uzaklaşıp tekrar “Uzak fotoğrafı çek”e bas.";
   };
   $("bReset").onclick = () => { resetRef(); };
+  $("bRowTape").onclick = () => {
+    const t = parseFloat(String($("iRowTape").value).replace(",", ".")) * 10, r = S.rows[S.rows.length - 1];
+    if (!r || !(t > 0)) { $("hint").textContent = "Önce bir ölçüm kaydet, sonra şerit metre değerini cm olarak yaz."; return; }
+    r.near = t; r.err = r.est - t; store.set("tri_rows", S.rows); renderTable(); $("iRowTape").value = "";
+    $("hint").textContent = `Son kayıt: tahmin ${fmtCm(r.est)} cm, şerit metre ${fmtCm(t)} cm, fark ${fmtCm(r.err, true)} cm.`;
+  };
   $("bCal").onclick = () => {
     if (S.mode === "calib") { if (S.calViews.length >= 8) runCalibration(); else { S.mode = "idle"; S.calViews = []; $("bCal").textContent = "Kalibrasyonu başlat"; } return; }
     resetRef(); S.mode = "calib"; S.calViews = []; $("bCal").textContent = "Şimdi hesapla (en az 8)";
@@ -621,11 +628,12 @@ function wireButtons() {
 function renderTable() {
   const tb = $("tbl").querySelector("tbody");
   tb.innerHTML = S.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${fmtCm(r.far)}</td><td>${fmtCm(r.near)}</td><td>${fmtCm(r.est)}</td>` +
-    `<td style="color:var(--${Math.abs(r.err) <= 10 ? "good" : Math.abs(r.err) <= 20 ? "warn" : "bad"})">${fmtCm(r.err, true)}</td><td>${fmtCm(r.lat)}</td><td>${r.par.toFixed(1)}°</td></tr>`).join("");
+    `<td style="color:var(--${r.err == null ? "muted" : Math.abs(r.err) <= 10 ? "good" : Math.abs(r.err) <= 20 ? "warn" : "bad"})">${fmtCm(r.err, true)}</td><td>${fmtCm(r.lat)}</td><td>${r.par.toFixed(1)}°</td></tr>`).join("");
   if (!S.rows.length) { $("summary").textContent = "Henüz kayıtlı ölçüm yok."; return; }
-  const e = S.rows.map((r) => Math.abs(r.err) / 10);
+  const e = S.rows.filter((r) => r.err != null).map((r) => Math.abs(r.err) / 10);
+  if (!e.length) { $("summary").textContent = `${S.rows.length} ölçüm, şerit metre değeri henüz girilmedi.`; return; }
   const mean = e.reduce((a, b) => a + b, 0) / e.length, max = Math.max(...e), ok = e.filter((v) => v <= 1).length;
-  $("summary").innerHTML = `<b>${S.rows.length}</b> ölçüm · ortalama hata <b>${mean.toFixed(2)} cm</b> · en kötü <b>${max.toFixed(2)} cm</b> · ≤1 cm: <b>${ok}/${S.rows.length}</b> (cm)`;
+  $("summary").innerHTML = `<b>${e.length}</b> ölçüm · ortalama hata <b>${mean.toFixed(2)} cm</b> · en kötü <b>${max.toFixed(2)} cm</b> · ≤1 cm: <b>${ok}/${e.length}</b> (cm)`;
 }
 function tableText() {
   const c = S.cal ? `fx=${S.cal.K[0].toFixed(1)} rms=${S.cal.rms?.toFixed(2)} ${S.W}x${S.H} kare=${S.sq}mm kamera=${S.camLabel || ""}` : "";
