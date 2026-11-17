@@ -1,0 +1,21 @@
+{
+ "squares": [
+  7,
+  5
+ ],
+ "square_mm": 22.0,
+ "marker_mm": 15.4,
+ "dictionary": "DICT_4X4_50",
+ "board_origin_mm": [
+  136.0,
+  50.0
+ ],
+ "page_mm": [
+  297,
+  210
+ ],
+ "junction_squares": [
+  -2.992561983471074,
+  2.506611570247934
+ ]
+}

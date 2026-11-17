@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Mesafe Ölçer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Düzen: üstte kamera görüntüsü, altında ölçüm paneli; yatay tutulunca yan yana */
+:root {
+  --bg: #f3f5f1; --panel: #ffffff; --fg: #1b231d; --muted: #5d6b60; --line: #d9dfd6;
+  --accent: #2f6f3e; --accent-fg: #ffffff; --good: #2f7d3b; --warn: #b7791f; --bad: #c0392b;
+  --chip: #e7ece4;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111612; --panel: #1a211c; --fg: #e6ece5; --muted: #98a59a; --line: #2c362f;
+  --accent: #5fae70; --accent-fg: #0d130f; --good: #6cc47c; --warn: #e0a93f; --bad: #ef6f5f; --chip: #243027;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111612; --panel: #1a211c; --fg: #e6ece5; --muted: #98a59a; --line: #2c362f;
+  --accent: #5fae70; --accent-fg: #0d130f; --good: #6cc47c; --warn: #e0a93f; --bad: #ef6f5f; --chip: #243027;
+  color-scheme: dark }
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 var(--sans) }
+body { padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(12px, env(safe-area-inset-left, 0px)) }
+.app { display: grid; gap: 10px; padding-block: 10px; max-width: 1400px; margin: 0 auto }
+@media (orientation: landscape) and (min-width: 700px) { .app { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); align-items: start } }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap }
+h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: .01em }
+h1 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px }
+.view { position: relative; background: #000; border-radius: 10px; overflow: hidden; touch-action: manipulation }
+.view canvas { display: block; width: 100%; height: auto }
+.overlay-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; color: #fff; background: rgba(0,0,0,.55); font-size: 15px }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 12px; min-width: 0 }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { background: var(--chip); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; white-space: nowrap }
+.chip b { font-weight: 600 }
+.chip.ok::before, .chip.no::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px }
+.chip.ok::before { background: var(--good) } .chip.no::before { background: var(--bad) }
+.readout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+.cell { display: grid; gap: 2px }
+.cell .lbl { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.cell .val { font: 600 26px/1.1 var(--mono); font-variant-numeric: tabular-nums }
+.cell .val small { font-size: 14px; font-weight: 400; color: var(--muted) }
+.val.good { color: var(--good) } .val.warn { color: var(--warn) } .val.bad { color: var(--bad) }
+.sub { font: 13px/1.5 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums }
+.hint { font-size: 14px; padding: 8px 10px; border-radius: 8px; background: var(--chip) }
+.hint.warn { color: var(--warn) }
+.btns { display: flex; flex-wrap: wrap; gap: 8px }
+button { font: 600 15px var(--sans); border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 9px; padding: 11px 14px; cursor: pointer; flex: 1 1 auto }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
+button:disabled { opacity: .45; cursor: default }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+details { border-top: 1px solid var(--line); padding-top: 10px }
+summary { cursor: pointer; font-weight: 600; font-size: 14px }
+.form { display: grid; gap: 10px; margin-top: 10px }
+label { display: grid; gap: 4px; font-size: 13px; color: var(--muted) }
+input, select { font: 15px var(--sans); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); width: 100% }
+.tablewrap { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font: 12.5px var(--mono); font-variant-numeric: tabular-nums }
+th, td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap }
+th { color: var(--muted); font-weight: 400 }
+.summary { font-size: 14px }
+.steps { margin: 0; padding-left: 20px; font-size: 14px; display: grid; gap: 4px }
+a { color: var(--accent) }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div style="display:grid;gap:8px;min-width:0">
+    <header>
+      <h1>Mesafe Ölçer <small>iki fotoğrafla üçgenleme</small></h1>
+      <span class="sub" id="perf"></span>
+    </header>
+    <div class="view" id="view">
+      <canvas id="screen" width="960" height="540"></canvas>
+      <div class="overlay-msg" id="overlay">OpenCV yükleniyor (~11 MB, ilk açılışta biraz sürer)…</div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="panel">
+    <div class="hint" id="hint">Hazırlanıyor…</div>
+
+    <div class="readout">
+      <div class="cell"><span class="lbl">Tahmin</span><span class="val" id="vEst">–</span></div>
+      <div class="cell"><span class="lbl">Gerçek</span><span class="val" id="vTrue">–</span></div>
+      <div class="cell"><span class="lbl">Hata</span><span class="val" id="vErr">–</span></div>
+    </div>
+    <div class="sub" id="vDetail">&nbsp;</div>
+
+    <div class="btns">
+      <button class="primary" id="bFar" disabled>1 · Uzak fotoğrafı çek</button>
+      <button id="bNear" disabled>2 · Yakın fotoğrafı kaydet</button>
+      <button id="bReset" disabled>Yeni ölçüm</button>
+    </div>
+
+    <div>
+      <div class="summary" id="summary">Henüz kayıtlı ölçüm yok.</div>
+      <div class="tablewrap"><table id="tbl"><thead><tr>
+        <th>#</th><th>uzak</th><th>yakın</th><th>tahmin</th><th>hata</th><th>yana</th><th>paralaks</th>
+      </tr></thead><tbody></tbody></table></div>
+      <div class="btns" style="margin-top:8px"><button id="bCopy">Sonuçları kopyala</button><button id="bClear">Tabloyu temizle</button></div>
+    </div>
+
+    <details id="dCal">
+      <summary>Kamera kalibrasyonu</summary>
+      <div class="form">
+        <div class="sub" id="calInfo">Kalibrasyon yok.</div>
+        <ol class="steps">
+          <li>Telefonu ölçümde kullanacağın yönde tut (yatay önerilir).</li>
+          <li>“Kalibrasyonu başlat”a bas, tahtayı 20–60 cm’den farklı açılardan ve görüntünün farklı köşelerinden göster.</li>
+          <li>15 görüntü toplanınca kalibrasyon kendiliğinden hesaplanır.</li>
+        </ol>
+        <div class="btns"><button id="bCal">Kalibrasyonu başlat</button><button id="bCalDel">Kalibrasyonu sil</button></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Ayarlar</summary>
+      <div class="form">
+        <label>Kare kenarı (mm), cetvelle ölç
+          <input id="iSq" type="number" step="0.1" min="5" max="200" inputmode="decimal"></label>
+        <label>Kamera <select id="iCam"></select></label>
+        <div class="btns"><button id="bAuto">Birleşim noktasını otomatik al</button></div>
+        <div class="sub">Görüntüye dokunursan, uzak fotoğrafta ölçülecek nokta orası olur (segmentasyonun vereceği nokta yerine). Nokta kâğıdın üstünde olmalı.</div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Nasıl çalışır</summary>
+      <div class="form" style="font-size:14px">
+        <p style="margin:0">Robotta kol, hedefe giderken iki fotoğraf çeker: biri uzaktan, biri yaklaşınca. Her iki anda kameranın konumu kol kontrolcüsünden bilinir. Birleşim noktası iki fotoğrafta eşleştirilir ve iki ışının kesiştiği yerden mesafe hesaplanır (üçgenleme). Yapay zekâ modeli kullanılmaz.</p>
+        <p style="margin:0">Bu testte kol kontrolcüsü yok. Kameranın konumunu kâğıttaki ChArUco tahtası verir. Tahta, gerçek mesafeyi de verir; tahmin ise sadece iki fotoğraftaki eşleşmeden ve iki konumdan gelir.</p>
+        <p style="margin:0">Yaklaşırken biraz yana da kay. Dümdüz yaklaşınca iki ışın neredeyse üst üste biner ve üçgenleme zayıflar.</p>
+        <p style="margin:0">Test kâğıdı: <a href="test_kagidi.pdf" target="_blank" rel="noopener">test_kagidi.pdf</a> (%100 yazdır) · ekranda göstermek için <a href="test_ekran.png" target="_blank" rel="noopener">test_ekran.png</a></p>
+      </div>
+    </details>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
