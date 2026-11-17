@@ -565,8 +565,8 @@ function updateUI(det, P, res) {
       (res.sigma != null ? ` · ±2σ ${fmtCm(2 * res.sigma)} cm` : "") + (res.pxErr != null ? ` · nokta kayması ${res.pxErr.toFixed(1)} px` : "");
   } else if (S.mode !== "live") {
     est.textContent = "–"; err.textContent = "–"; err.className = "val";
-    tru.innerHTML = P && S.cal ? `${fmtCm(norm3(toCam(P, S.tapPoint ? [0, 0, 0] : [SHEET.junction[0] * S.sq, SHEET.junction[1] * S.sq, 0])))}<small> cm</small>` : "–";
-    if (S.tapPoint) tru.textContent = "–";
+    S.liveTrue = P && S.cal && !S.tapPoint ? norm3(toCam(P, [SHEET.junction[0] * S.sq, SHEET.junction[1] * S.sq, 0])) : null;
+    tru.innerHTML = S.liveTrue != null ? `${fmtCm(S.liveTrue)}<small> cm</small>` : "–";
     $("vDetail").innerHTML = "&nbsp;";
   }
   $("bFar").disabled = !(S.cal && P && S.mode !== "calib");
@@ -592,6 +592,15 @@ function wireButtons() {
   };
   $("bCalDel").onclick = () => { store.del(S.calKey); S.cal = SIM ? simCal() : null; resetRef(); };
   $("bAuto").onclick = () => { S.tapPoint = null; };
+  $("bTape").onclick = () => {
+    // Şerit metreyle ölçülen mesafeye göre kare kenarını düzelt (ölçek tek oranla kayar)
+    const t = parseFloat(String($("iTape").value).replace(",", ".")) * 10;
+    if (!(t > 50)) { $("hint").textContent = "Önce şerit metre mesafesini cm olarak yaz."; return; }
+    if (S.mode !== "idle" || S.liveTrue == null) { $("hint").textContent = "Tahta görünürken ve ölçüm başlamamışken bas (gerekirse “Yeni ölçüm”)."; return; }
+    const old = S.sq, v = Math.round(old * t / S.liveTrue * 100) / 100;
+    S.sq = v; store.set("tri_sq", v); $("iSq").value = v; resetRef();
+    $("hint").textContent = `Kare kenarı ${old} → ${v} mm yapıldı. Gerçek artık şerit metreyle uyuşmalı.`;
+  };
   $("bCopy").onclick = async () => {
     const txt = tableText();
     try { await navigator.clipboard.writeText(txt); $("bCopy").textContent = "Kopyalandı"; }
